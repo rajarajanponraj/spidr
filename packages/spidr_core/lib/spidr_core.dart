@@ -17,3 +17,4 @@ export 'src/retry_policy.dart';
 export 'src/page_impl.dart';
 export 'src/xpath_evaluator.dart';
 export 'src/html_parser.dart';
+export 'src/fingerprint.dart';

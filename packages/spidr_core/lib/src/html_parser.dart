@@ -10,6 +10,9 @@ import 'xpath_evaluator.dart';
 class HtmlSpidrElement implements SpidrElement {
   final dom.Element _element;
 
+  /// Exposes the underlying HTML DOM element.
+  dom.Element get rawElement => _element;
+
   /// Creates a new [HtmlSpidrElement] wrapping the underlying dom [_element].
   HtmlSpidrElement(this._element);
 
