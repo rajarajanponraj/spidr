@@ -245,13 +245,8 @@ class MemoryFingerprintStore implements FingerprintStore {
 
 /// Global registry holding the active [FingerprintStore] instance.
 class SpidrFingerprintRegistry {
-  static FingerprintStore _store = MemoryFingerprintStore();
-
-  /// Gets the currently configured [FingerprintStore].
-  static FingerprintStore get store => _store;
-
-  /// Sets the active [FingerprintStore].
-  static set store(FingerprintStore newStore) => _store = newStore;
+  /// The active [FingerprintStore].
+  static FingerprintStore store = MemoryFingerprintStore();
 }
 
 /// Traverses all elements inside [rootElement] and returns the best matching candidate for [target].

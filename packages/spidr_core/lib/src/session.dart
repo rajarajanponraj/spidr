@@ -88,11 +88,6 @@ class MemorySessionStore implements SpidrSessionStore {
 
 /// Global registry for configuring the active session storage manager.
 class SpidrSessionRegistry {
-  static SpidrSessionStore _store = MemorySessionStore();
-
-  /// Gets the currently configured [SpidrSessionStore].
-  static SpidrSessionStore get store => _store;
-
-  /// Sets the active [SpidrSessionStore].
-  static set store(SpidrSessionStore newStore) => _store = newStore;
+  /// The active [SpidrSessionStore].
+  static SpidrSessionStore store = MemorySessionStore();
 }

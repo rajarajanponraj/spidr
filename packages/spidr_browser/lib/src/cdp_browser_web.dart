@@ -279,14 +279,14 @@ class WebCdpBrowserPage implements SpidrBrowserPage {
     // 2. Get local storage
     String localStorageJson = '{}';
     try {
-      localStorageJson = await evaluate<String>('JSON.stringify(localStorage)') ?? '{}';
+      localStorageJson = await evaluate<String?>('JSON.stringify(localStorage)') ?? '{}';
     } catch (_) {}
     final localStorage = Map<String, String>.from(jsonDecode(localStorageJson) as Map);
 
     // 3. Get IndexedDB database dump
     String indexedDbJson = '{}';
     try {
-      indexedDbJson = await evaluate<String>('''
+      indexedDbJson = await evaluate<String?>('''
         (async () => {
           if (!window.indexedDB || !window.indexedDB.databases) return "{}";
           const dbs = await window.indexedDB.databases();

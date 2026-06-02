@@ -10,8 +10,8 @@ class StorageSessionStore implements SpidrSessionStore {
   /// Creates a new [StorageSessionStore] wrapping the [_storage] adapter.
   StorageSessionStore(
     this._storage, {
-    String keyPrefix = 'session:',
-  }) : _keyPrefix = keyPrefix;
+    this._keyPrefix = 'session:',
+  });
 
   @override
   Future<void> save(SpidrSession session) async {

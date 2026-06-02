@@ -10,8 +10,8 @@ class StorageFingerprintStore implements FingerprintStore {
   /// Creates a new [StorageFingerprintStore] wrapping the [_storage] adapter.
   StorageFingerprintStore(
     this._storage, {
-    String keyPrefix = 'fingerprint:',
-  }) : _keyPrefix = keyPrefix;
+    this._keyPrefix = 'fingerprint:',
+  });
 
   @override
   Future<void> save(String key, ElementFingerprint fingerprint) async {

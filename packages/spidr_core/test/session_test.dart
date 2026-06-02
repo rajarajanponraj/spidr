@@ -36,7 +36,7 @@ void main() {
 
     test('MemorySessionStore basic CRUD operations', () async {
       final store = MemorySessionStore();
-      final session = SpidrSession(sessionId: 'session_a');
+      const session = SpidrSession(sessionId: 'session_a');
 
       await store.save(session);
       expect(await store.load('session_a'), isNotNull);
@@ -49,7 +49,7 @@ void main() {
       final client = DioSpidrClient();
 
       // Add a test cookie manually
-      client.cookieJar.addCookie(SpidrCookie(
+      client.cookieJar.addCookie(const SpidrCookie(
         name: 'session_id',
         value: 'xyz987',
         domain: 'foo.com',

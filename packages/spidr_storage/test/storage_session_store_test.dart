@@ -18,7 +18,7 @@ void main() {
     });
 
     test('should save, load, and delete session successfully', () async {
-      final session = SpidrSession(
+      const session = SpidrSession(
         sessionId: 'session_user_5',
         cookies: [
           {'name': 'auth', 'value': 'secret_token_val'}
