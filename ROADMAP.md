@@ -48,9 +48,9 @@ This document outlines the development phases for the SPIDR scraping, browser au
 - [x] Expose `save()` and `restore()` abstractions
 
 ### Phase 9: Crawler Framework
-- [ ] Define the crawler skeleton: `Spider`, `Request`, `Response`, `Crawler`, `Scheduler`
-- [ ] Provide BFS (Breadth-First) and DFS (Depth-First) crawling strategies
-- [ ] Handle robots.txt parsing and request limits
+- [x] Define the crawler skeleton: `Spider`, `Request`, `Response`, `Crawler`, `Scheduler`
+- [x] Provide BFS (Breadth-First) and DFS (Depth-First) crawling strategies
+- [x] Handle robots.txt parsing and request limits
 
 ### Phase 10: Concurrent Execution
 - [ ] Isolate worker pools for multi-core scraping operations

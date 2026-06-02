@@ -42,7 +42,209 @@ abstract class CrawlerScheduler {
   void clear();
 }
 
-/// Orchestrates the scraping and execution loop.
+/// Default implementation of [CrawlerScheduler] supporting FIFO (BFS) and LIFO (DFS).
+class DefaultCrawlerScheduler implements CrawlerScheduler {
+  /// The crawl strategy (BFS or DFS).
+  final CrawlStrategy strategy;
+  final List<SpidrRequest> _queue = [];
+  final Set<Uri> _visited = {};
+
+  /// Creates a new [DefaultCrawlerScheduler] with [strategy].
+  DefaultCrawlerScheduler({this.strategy = CrawlStrategy.bfs});
+
+  @override
+  bool get isEmpty => _queue.isEmpty;
+
+  @override
+  void add(SpidrRequest request) {
+    _queue.add(request);
+  }
+
+  @override
+  SpidrRequest? next() {
+    if (_queue.isEmpty) return null;
+    if (strategy == CrawlStrategy.bfs) {
+      return _queue.removeAt(0);
+    } else {
+      return _queue.removeLast();
+    }
+  }
+
+  @override
+  void markVisited(Uri url) {
+    _visited.add(url);
+  }
+
+  @override
+  bool isVisited(Uri url) {
+    return _visited.contains(url);
+  }
+
+  @override
+  void clear() {
+    _queue.clear();
+    _visited.clear();
+  }
+}
+
+/// Represents a single robots.txt directive rule.
+class RobotsDirective {
+  /// The type of directive ('allow', 'disallow', or 'crawl-delay').
+  final String type;
+
+  /// The path or value associated with the directive.
+  final String value;
+
+  /// Creates a new [RobotsDirective].
+  const RobotsDirective(this.type, this.value);
+}
+
+/// Parser for robots.txt rules.
+class RobotsTxt {
+  /// User agent specific list of rules.
+  final Map<String, List<RobotsDirective>> userAgentDirectives;
+
+  /// Creates a new [RobotsTxt].
+  const RobotsTxt(this.userAgentDirectives);
+
+  /// Parses robots.txt file contents.
+  static RobotsTxt parse(String content) {
+    final directives = <String, List<RobotsDirective>>{};
+    final lines = content.split(RegExp(r'\r?\n'));
+    List<String> currentUserAgents = [];
+
+    for (var line in lines) {
+      final commentIdx = line.indexOf('#');
+      if (commentIdx != -1) {
+        line = line.substring(0, commentIdx);
+      }
+      line = line.trim();
+      if (line.isEmpty) continue;
+
+      final colonIdx = line.indexOf(':');
+      if (colonIdx == -1) continue;
+
+      final key = line.substring(0, colonIdx).trim().toLowerCase();
+      final value = line.substring(colonIdx + 1).trim();
+
+      if (key == 'user-agent') {
+        final ua = value.toLowerCase();
+        if (currentUserAgents.isNotEmpty && directives.containsKey(currentUserAgents.first)) {
+          currentUserAgents = [];
+        }
+        currentUserAgents.add(ua);
+        directives.putIfAbsent(ua, () => []);
+      } else if (currentUserAgents.isNotEmpty) {
+        if (key == 'disallow' || key == 'allow' || key == 'crawl-delay') {
+          for (final ua in currentUserAgents) {
+            directives[ua]!.add(RobotsDirective(key, value));
+          }
+        }
+      }
+    }
+
+    return RobotsTxt(directives);
+  }
+
+  /// Evaluates if [path] is permitted for [userAgent].
+  bool isAllowed(String userAgent, String path) {
+    final normalizedUa = userAgent.toLowerCase();
+    var rules = userAgentDirectives[normalizedUa];
+    if (rules == null || rules.isEmpty) {
+      rules = userAgentDirectives['*'] ?? const [];
+    }
+
+    RobotsDirective? bestMatch;
+    for (final rule in rules) {
+      if (rule.type == 'disallow' || rule.type == 'allow') {
+        final rulePath = rule.value;
+        if (path.startsWith(rulePath)) {
+          if (bestMatch == null || rulePath.length > bestMatch.value.length) {
+            bestMatch = rule;
+          }
+        }
+      }
+    }
+
+    if (bestMatch != null) {
+      return bestMatch.type == 'allow';
+    }
+
+    return true;
+  }
+
+  /// Returns the crawl delay value in seconds, if specified.
+  double? getCrawlDelay(String userAgent) {
+    final normalizedUa = userAgent.toLowerCase();
+    var rules = userAgentDirectives[normalizedUa];
+    if (rules == null || rules.isEmpty) {
+      rules = userAgentDirectives['*'] ?? const [];
+    }
+    for (final rule in rules) {
+      if (rule.type == 'crawl-delay') {
+        return double.tryParse(rule.value);
+      }
+    }
+    return null;
+  }
+}
+
+/// Helper that downloads, parses, and caches robots.txt configuration dynamically.
+class RobotsManager {
+  /// Client to perform network calls.
+  final SpidrClient client;
+
+  /// User agent to match in robots directives.
+  final String userAgent;
+
+  final Map<String, RobotsTxt> _cache = {};
+
+  /// Creates a new [RobotsManager].
+  RobotsManager(this.client, {this.userAgent = 'spidr'});
+
+  /// Resolves if [url] is allowed under host's robots.txt rules.
+  Future<bool> isAllowed(Uri url) async {
+    final robotsTxt = await _fetchRobots(url);
+    final path = url.path.isEmpty ? '/' : url.path;
+    return robotsTxt.isAllowed(userAgent, path);
+  }
+
+  /// Resolves if there's a crawl delay declared for the current user agent.
+  Future<double?> getCrawlDelay(Uri url) async {
+    final robotsTxt = await _fetchRobots(url);
+    return robotsTxt.getCrawlDelay(userAgent);
+  }
+
+  Future<RobotsTxt> _fetchRobots(Uri url) async {
+    final hostKey = '${url.scheme}://${url.host}:${url.port}';
+    if (_cache.containsKey(hostKey)) {
+      return _cache[hostKey]!;
+    }
+
+    final robotsUrl = Uri(
+      scheme: url.scheme,
+      userInfo: url.userInfo,
+      host: url.host,
+      port: url.port,
+      path: '/robots.txt',
+    );
+
+    try {
+      final response = await client.send(SpidrRequest(url: robotsUrl));
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final robots = RobotsTxt.parse(response.bodyString);
+        _cache[hostKey] = robots;
+        return robots;
+      }
+    } catch (_) {}
+
+    const robots = RobotsTxt({});
+    _cache[hostKey] = robots;
+    return robots;
+  }
+}
+
+/// Orchestrates the crawling and execution loop.
 class SpidrCrawler {
   /// The crawler's active scraping logic definition.
   final Spider spider;
@@ -59,6 +261,16 @@ class SpidrCrawler {
   /// Time to pause between requests.
   final Duration delay;
 
+  /// Whether to obey robots.txt directives.
+  final bool respectRobots;
+
+  /// User agent identifying string for robots.txt parsing.
+  final String userAgent;
+
+  final Map<String, DateTime> _lastRequestTimes = {};
+  late final RobotsManager _robotsManager;
+  SpidrRequest? _currentRequest;
+
   /// Creates a new [SpidrCrawler].
   SpidrCrawler({
     required this.spider,
@@ -66,36 +278,85 @@ class SpidrCrawler {
     required this.scheduler,
     this.maxDepth = 3,
     this.delay = Duration.zero,
-  });
+    this.respectRobots = true,
+    this.userAgent = 'spidr',
+  }) {
+    _robotsManager = RobotsManager(client, userAgent: userAgent);
+  }
 
   /// Commences execution. Loops until the scheduler is exhausted.
   Future<void> run() async {
     for (final url in spider.startUrls) {
-      scheduler.add(SpidrRequest(url: url));
+      scheduler.add(SpidrRequest(
+        url: url,
+        extra: const {'depth': 0},
+      ));
     }
 
     while (!scheduler.isEmpty) {
       final request = scheduler.next();
       if (request == null) break;
 
+      final currentDepth = request.extra['depth'] as int? ?? 0;
+      if (currentDepth > maxDepth) continue;
+
+      if (respectRobots) {
+        final allowed = await _robotsManager.isAllowed(request.url);
+        if (!allowed) continue;
+      }
+
+      final hostKey = '${request.url.scheme}://${request.url.host}:${request.url.port}';
+      final now = DateTime.now();
+      final lastRequest = _lastRequestTimes[hostKey];
+
+      var targetDelay = delay;
+      if (respectRobots) {
+        final robotsDelay = await _robotsManager.getCrawlDelay(request.url);
+        if (robotsDelay != null) {
+          final robotsDuration = Duration(milliseconds: (robotsDelay * 1000).toInt());
+          if (robotsDuration > targetDelay) {
+            targetDelay = robotsDuration;
+          }
+        }
+      }
+
+      if (lastRequest != null && targetDelay > Duration.zero) {
+        final diff = now.difference(lastRequest);
+        if (diff < targetDelay) {
+          await Future<void>.delayed(targetDelay - diff);
+        }
+      }
+
+      _lastRequestTimes[hostKey] = DateTime.now();
+
       if (scheduler.isVisited(request.url)) continue;
       scheduler.markVisited(request.url);
+
+      _currentRequest = request;
 
       try {
         final response = await client.send(request);
         await spider.parse(response, this);
       } catch (_) {
         // Suppress or delegate to dynamic middleware logger in later phases
-      }
-
-      if (delay > Duration.zero) {
-        await Future<void>.delayed(delay);
+      } finally {
+        _currentRequest = null;
       }
     }
   }
 
   /// Manually queue additional requests discovered during scraping.
   void submit(SpidrRequest request) {
-    scheduler.add(request);
+    var updatedRequest = request;
+    if (!request.extra.containsKey('depth')) {
+      final currentDepth = _currentRequest?.extra['depth'] as int? ?? 0;
+      updatedRequest = request.copyWith(
+        extra: {
+          ...request.extra,
+          'depth': currentDepth + 1,
+        },
+      );
+    }
+    scheduler.add(updatedRequest);
   }
 }
