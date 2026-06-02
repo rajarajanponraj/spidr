@@ -55,6 +55,17 @@ class MockClient implements SpidrClient {
 
   @override
   void close() {}
+
+  @override
+  Future<SpidrSession> saveSession(String sessionId, {Map<String, String>? headers}) async {
+    return SpidrSession(
+      sessionId: sessionId,
+      headers: headers ?? const {},
+    );
+  }
+
+  @override
+  Future<void> restoreSession(SpidrSession session) async {}
 }
 
 void main() {
