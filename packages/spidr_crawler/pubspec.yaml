@@ -1,0 +1,18 @@
+name: spidr_crawler
+description: Scalable crawling framework including Spider, queues, and scheduling logic for SPIDR.
+version: 0.0.1
+resolution: workspace
+homepage: https://github.com/spidr-scraping/spidr
+repository: https://github.com/spidr-scraping/spidr/tree/main/packages/spidr_crawler
+issue_tracker: https://github.com/spidr-scraping/spidr/issues
+
+environment:
+  sdk: ^3.12.0
+
+dependencies:
+  spidr_core: ^0.0.1
+  meta: ^1.10.0
+
+dev_dependencies:
+  test: ^1.24.0
+  lints: ^3.0.0

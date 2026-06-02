@@ -1,0 +1,16 @@
+name: spidr_workspace
+publish_to: none
+
+environment:
+  sdk: ^3.12.0
+
+workspace:
+  - packages/spidr
+  - packages/spidr_core
+  - packages/spidr_browser
+  - packages/spidr_crawler
+  - packages/spidr_stealth
+  - packages/spidr_storage
+  - packages/spidr_proxy
+  - packages/spidr_ai
+  - packages/spidr_cli

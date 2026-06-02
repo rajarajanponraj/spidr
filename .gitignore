@@ -1,0 +1,17 @@
+# https://dart.dev/guides/libraries/private-files
+
+# Files and directories created by pub
+.dart_tool/
+.packages
+.pub/
+build/
+
+# Avoid committing pubspec.lock for packages (libraries)
+pubspec.lock
+
+# IDE/Editor files
+.idea/
+.vscode/
+*.imap
+*.data
+*.log
