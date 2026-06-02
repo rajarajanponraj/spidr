@@ -39,9 +39,9 @@ This document outlines the development phases for the SPIDR scraping, browser au
 - [x] Design fingerprint serialization and persistence contracts
 
 ### Phase 7: Adaptive Selector Engine
-- [ ] Formulate self-healing algorithms that compare current DOM elements with historical fingerprints when a target selector breaks
-- [ ] Build similarity metrics matching and confidence-score calculations
-- [ ] Implement `page.adaptive()` facade
+- [x] Formulate self-healing algorithms that compare current DOM elements with historical fingerprints when a target selector breaks
+- [x] Build similarity metrics matching and confidence-score calculations
+- [x] Implement `page.adaptive()` facade
 
 ### Phase 8: Session Layer
 - [ ] Support complete state save and load: cookies, headers, local storage, indexDB state, session contexts

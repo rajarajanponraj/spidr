@@ -242,3 +242,144 @@ class MemoryFingerprintStore implements FingerprintStore {
     return _store[key];
   }
 }
+
+/// Global registry holding the active [FingerprintStore] instance.
+class SpidrFingerprintRegistry {
+  static FingerprintStore _store = MemoryFingerprintStore();
+
+  /// Gets the currently configured [FingerprintStore].
+  static FingerprintStore get store => _store;
+
+  /// Sets the active [FingerprintStore].
+  static set store(FingerprintStore newStore) => _store = newStore;
+}
+
+/// Traverses all elements inside [rootElement] and returns the best matching candidate for [target].
+/// Returns null if no candidate meets the threshold (0.6).
+SpidrElement? findBestMatch(SpidrElement rootElement, ElementFingerprint target) {
+  final allCandidates = <SpidrElement>[];
+
+  void collect(SpidrElement element) {
+    allCandidates.add(element);
+    if (element is HtmlSpidrElement) {
+      for (final child in element.rawElement.children) {
+        collect(HtmlSpidrElement(child));
+      }
+    }
+  }
+
+  collect(rootElement);
+
+  var bestScore = 0.0;
+  SpidrElement? bestCandidate;
+
+  for (final element in allCandidates) {
+    final candidateFp = ElementFingerprint.capture(element);
+    final score = calculateSimilarity(candidateFp, target);
+    if (score > bestScore) {
+      bestScore = score;
+      bestCandidate = element;
+    }
+  }
+
+  const confidenceThreshold = 0.6;
+  if (bestScore >= confidenceThreshold) {
+    return bestCandidate;
+  }
+  return null;
+}
+
+/// Calculates a similarity score between two fingerprints, returning a value between 0.0 and 1.0.
+double calculateSimilarity(ElementFingerprint a, ElementFingerprint b) {
+  var score = 0.0;
+  var totalWeight = 0.0;
+
+  // 1. Tag Name Match (Weight: 0.15)
+  const tagWeight = 0.15;
+  totalWeight += tagWeight;
+  if (a.tagName == b.tagName) {
+    score += tagWeight;
+  }
+
+  // 2. Classes Match (Weight: 0.15)
+  const classWeight = 0.15;
+  totalWeight += classWeight;
+  if (a.classes.isNotEmpty || b.classes.isNotEmpty) {
+    final intersect = a.classes.toSet().intersection(b.classes.toSet()).length;
+    final union = a.classes.toSet().union(b.classes.toSet()).length;
+    if (union > 0) {
+      score += (intersect / union) * classWeight;
+    }
+  } else {
+    score += classWeight;
+  }
+
+  // 3. Attributes Match (Weight: 0.20)
+  const attrWeight = 0.20;
+  totalWeight += attrWeight;
+  final aKeys = a.attributes.keys.toSet();
+  final bKeys = b.attributes.keys.toSet();
+  if (aKeys.isNotEmpty || bKeys.isNotEmpty) {
+    final commonKeys = aKeys.intersection(bKeys);
+    final unionKeys = aKeys.union(bKeys);
+    
+    var matchingAttrs = 0;
+    for (final key in commonKeys) {
+      if (a.attributes[key] == b.attributes[key]) {
+        matchingAttrs++;
+      }
+    }
+    if (unionKeys.isNotEmpty) {
+      score += (matchingAttrs / unionKeys.length) * attrWeight;
+    }
+  } else {
+    score += attrWeight;
+  }
+
+  // 4. Sibling Tags Match (Weight: 0.10)
+  const siblingWeight = 0.10;
+  totalWeight += siblingWeight;
+  if (a.siblingTags.isNotEmpty || b.siblingTags.isNotEmpty) {
+    final intersect = a.siblingTags.toSet().intersection(b.siblingTags.toSet()).length;
+    final union = a.siblingTags.toSet().union(b.siblingTags.toSet()).length;
+    if (union > 0) {
+      score += (intersect / union) * siblingWeight;
+    }
+  } else {
+    score += siblingWeight;
+  }
+
+  // 5. Depth Match (Weight: 0.10)
+  const depthWeight = 0.10;
+  totalWeight += depthWeight;
+  final depthDiff = (a.depth - b.depth).abs();
+  if (depthDiff == 0) {
+    score += depthWeight;
+  } else {
+    final penalty = depthDiff * 0.02;
+    score += (depthWeight - penalty).clamp(0.0, depthWeight);
+  }
+
+  // 6. Parent Hash Match (Weight: 0.10)
+  const parentWeight = 0.10;
+  totalWeight += parentWeight;
+  if (a.parentHash == b.parentHash && a.parentHash != null) {
+    score += parentWeight;
+  }
+
+  // 7. XPath Match (Weight: 0.10)
+  const xpathWeight = 0.10;
+  totalWeight += xpathWeight;
+  if (a.xpath == b.xpath && a.xpath != null) {
+    score += xpathWeight;
+  }
+
+  // 8. CSS Selector Match (Weight: 0.10)
+  const cssWeight = 0.10;
+  totalWeight += cssWeight;
+  if (a.cssSelector == b.cssSelector && a.cssSelector != null) {
+    score += cssWeight;
+  }
+
+  return totalWeight > 0 ? (score / totalWeight) : 0.0;
+}

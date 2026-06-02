@@ -58,7 +58,9 @@ class SimpleSpidrPage extends SpidrPage {
           );
 
   @override
-  Future<SpidrElement?> adaptive(String selector) async => null;
+  Future<SpidrElement?> adaptive(String selector) => SpidrPage.adaptiveHelper(this, selector);
+
+
 
   @override
   Future<T> extract<T>() async {

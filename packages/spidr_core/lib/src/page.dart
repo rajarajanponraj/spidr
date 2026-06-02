@@ -1,6 +1,7 @@
 import 'element.dart';
 import 'exceptions.dart';
 import 'response.dart';
+import 'fingerprint.dart';
 
 typedef PageRenderer =
     Future<SpidrPage> Function(
@@ -53,6 +54,36 @@ abstract class SpidrPage {
   /// Locates elements using self-healing capabilities if the standard selector fails.
   /// Resolves the selector based on historical visual, behavioral, and structural fingerprints.
   Future<SpidrElement?> adaptive(String selector);
+
+  /// Shared helper implementation of self-healing selectors that can be reused by classes implementing [SpidrPage].
+  static Future<SpidrElement?> adaptiveHelper(SpidrPage page, String selector) async {
+    final store = SpidrFingerprintRegistry.store;
+
+    // 1. Try standard CSS selector lookup first
+    final element = page.css(selector);
+    if (element != null) {
+      try {
+        final fingerprint = ElementFingerprint.capture(element);
+        await store.save(selector, fingerprint);
+      } catch (_) {}
+      return element;
+    }
+
+    // 2. Standard selector lookup failed - try self-healing
+    final historicalFp = await store.load(selector);
+    if (historicalFp == null) {
+      return null;
+    }
+
+    final candidate = findBestMatch(page.root, historicalFp);
+    if (candidate != null) {
+      try {
+        final newFp = ElementFingerprint.capture(candidate);
+        await store.save(selector, newFp);
+      } catch (_) {}
+    }
+    return candidate;
+  }
 
   /// Automatically extracts structured, typed data schemas from the page.
   /// Leverages dynamic AST maps or registered AI models to construct instance of [T].

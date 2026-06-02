@@ -167,7 +167,9 @@ class IoCdpBrowserPage implements SpidrBrowserPage {
   List<SpidrElement> xpathAll(String expression) => root.xpathAll(expression);
 
   @override
-  Future<SpidrElement?> adaptive(String selector) async => css(selector);
+  Future<SpidrElement?> adaptive(String selector) => SpidrPage.adaptiveHelper(this, selector);
+
+
 
   @override
   Future<T> extract<T>() async => throw UnimplementedError(

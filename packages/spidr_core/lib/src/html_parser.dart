@@ -93,11 +93,9 @@ class HtmlSpidrPage extends SpidrPage {
   SpidrElement get root => _root;
 
   @override
-  Future<SpidrElement?> adaptive(String selector) async {
-    throw UnimplementedError(
-      'Self-healing adaptive selection is not implemented yet. Commencing in Phase 7.',
-    );
-  }
+  Future<SpidrElement?> adaptive(String selector) => SpidrPage.adaptiveHelper(this, selector);
+
+
 
   @override
   Future<T> extract<T>() async {
