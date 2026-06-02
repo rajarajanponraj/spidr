@@ -9,6 +9,7 @@ import 'rate_limiter.dart';
 import 'request.dart';
 import 'response.dart';
 import 'retry_policy.dart';
+import 'session.dart';
 
 import 'dio_proxy_stub.dart'
     if (dart.library.io) 'dio_proxy_io.dart'
@@ -208,5 +209,23 @@ class DioSpidrClient implements SpidrClient {
   @override
   void close() {
     _dio.close(force: true);
+  }
+
+  @override
+  Future<SpidrSession> saveSession(String sessionId, {Map<String, String>? headers}) async {
+    final serializedCookies = cookieJar.all.map((c) => c.toJson()).toList();
+    return SpidrSession(
+      sessionId: sessionId,
+      cookies: serializedCookies,
+      headers: headers ?? const {},
+    );
+  }
+
+  @override
+  Future<void> restoreSession(SpidrSession session) async {
+    cookieJar.clear();
+    for (final cMap in session.cookies) {
+      cookieJar.addCookie(SpidrCookie.fromJson(cMap));
+    }
   }
 }

@@ -32,6 +32,32 @@ class SpidrCookie {
     this.secure = false,
   });
 
+  /// Serializes the cookie to a standard JSON-compatible Map.
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        'value': value,
+        'domain': domain,
+        'path': path,
+        'expires': expires?.toIso8601String(),
+        'httpOnly': httpOnly,
+        'secure': secure,
+      };
+
+  /// Deserializes a cookie from a JSON-compatible Map.
+  factory SpidrCookie.fromJson(Map<String, dynamic> json) {
+    return SpidrCookie(
+      name: json['name'] as String,
+      value: json['value'] as String,
+      domain: json['domain'] as String?,
+      path: json['path'] as String?,
+      expires: json['expires'] != null
+          ? DateTime.parse(json['expires'] as String)
+          : null,
+      httpOnly: json['httpOnly'] as bool? ?? false,
+      secure: json['secure'] as bool? ?? false,
+    );
+  }
+
   /// Evaluates whether the cookie expiration timestamp has passed.
   bool get isExpired {
     if (expires == null) return false;
@@ -181,6 +207,19 @@ class SpidrCookieJar {
 
   /// Returns a read-only list of stored cookies.
   List<SpidrCookie> get all => List.unmodifiable(_cookies);
+
+  /// Manually inserts a cookie into the jar, replacing any duplicate entries.
+  void addCookie(SpidrCookie cookie) {
+    _cookies.removeWhere(
+      (c) =>
+          c.name == cookie.name &&
+          c.domain == cookie.domain &&
+          c.path == cookie.path,
+    );
+    if (!cookie.isExpired) {
+      _cookies.add(cookie);
+    }
+  }
 
   /// Discards all stored cookies.
   void clear() {

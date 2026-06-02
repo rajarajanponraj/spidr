@@ -244,6 +244,7 @@ class WebCdpBrowserPage implements SpidrBrowserPage {
       final result = await _tabConnection.runtime.evaluate(
         expression,
         returnByValue: true,
+        awaitPromise: true,
       );
       if (result.value == null) {
         return null as T;
@@ -265,5 +266,175 @@ class WebCdpBrowserPage implements SpidrBrowserPage {
     );
     final base64Data = response.result?['data'] as String;
     return base64.decode(base64Data);
+  }
+
+  @override
+  Future<SpidrSession> saveSession(String sessionId) async {
+    // 1. Get browser cookies
+    await _tabConnection.sendCommand('Network.enable');
+    final cookiesResponse = await _tabConnection.sendCommand('Network.getCookies');
+    final cookiesList = cookiesResponse.result?['cookies'] as List? ?? const [];
+    final cookies = cookiesList.map((c) => Map<String, dynamic>.from(c as Map)).toList();
+
+    // 2. Get local storage
+    String localStorageJson = '{}';
+    try {
+      localStorageJson = await evaluate<String>('JSON.stringify(localStorage)') ?? '{}';
+    } catch (_) {}
+    final localStorage = Map<String, String>.from(jsonDecode(localStorageJson) as Map);
+
+    // 3. Get IndexedDB database dump
+    String indexedDbJson = '{}';
+    try {
+      indexedDbJson = await evaluate<String>('''
+        (async () => {
+          if (!window.indexedDB || !window.indexedDB.databases) return "{}";
+          const dbs = await window.indexedDB.databases();
+          const result = {};
+          for (const dbInfo of dbs) {
+            if (!dbInfo.name) continue;
+            const db = await new Promise((resolve, reject) => {
+              const req = window.indexedDB.open(dbInfo.name, dbInfo.version);
+              req.onsuccess = () => resolve(req.result);
+              req.onerror = () => reject(req.error);
+            });
+            const dbData = {};
+            for (const storeName of db.objectStoreNames) {
+              const tx = db.transaction(storeName, 'readonly');
+              const store = tx.objectStore(storeName);
+              const records = await new Promise((resolve) => {
+                const req = store.getAll();
+                req.onsuccess = () => resolve(req.result);
+              });
+              const keys = await new Promise((resolve) => {
+                const req = store.getAllKeys();
+                req.onsuccess = () => resolve(req.result);
+              });
+              const storeRecords = {};
+              for (let i = 0; i < keys.length; i++) {
+                storeRecords[String(keys[i])] = records[i];
+              }
+              dbData[storeName] = storeRecords;
+            }
+            db.close();
+            result[dbInfo.name] = dbData;
+          }
+          return JSON.stringify(result);
+        })()
+      ''') ?? '{}';
+    } catch (_) {}
+    final parsed = jsonDecode(indexedDbJson) as Map;
+    final indexedDb = <String, String>{};
+    parsed.forEach((key, value) {
+      indexedDb[key.toString()] = jsonEncode(value);
+    });
+
+    return SpidrSession(
+      sessionId: sessionId,
+      cookies: cookies,
+      localStorage: localStorage,
+      indexedDb: indexedDb,
+    );
+  }
+
+  @override
+  Future<void> restoreSession(SpidrSession session) async {
+    // 1. Set browser cookies
+    await _tabConnection.sendCommand('Network.enable');
+    await _tabConnection.sendCommand('Network.clearBrowserCookies');
+    for (final cMap in session.cookies) {
+      await _tabConnection.sendCommand('Network.setCookie', {
+        'name': cMap['name'],
+        'value': cMap['value'],
+        'domain': cMap['domain'],
+        'path': cMap['path'],
+        if (cMap['secure'] != null) 'secure': cMap['secure'],
+        if (cMap['httpOnly'] != null) 'httpOnly': cMap['httpOnly'],
+        if (cMap['sameSite'] != null) 'sameSite': cMap['sameSite'],
+        if (cMap['expires'] != null) 'expires': cMap['expires'],
+      });
+    }
+
+    // 2. Set local storage
+    if (session.localStorage.isNotEmpty) {
+      final escapedStorage = jsonEncode(session.localStorage);
+      try {
+        await evaluate<void>('''
+          (() => {
+            const data = $escapedStorage;
+            localStorage.clear();
+            for (const k in data) {
+              localStorage.setItem(k, data[k]);
+            }
+          })()
+        ''');
+      } catch (_) {}
+    }
+
+    // 3. Set IndexedDB database dump
+    if (session.indexedDb.isNotEmpty) {
+      final escapedDb = jsonEncode(session.indexedDb);
+      try {
+        await evaluate<void>('''
+          (async () => {
+            const dbsData = $escapedDb;
+            if (!window.indexedDB) return;
+            for (const dbName in dbsData) {
+              const dbData = typeof dbsData[dbName] === 'string' ? JSON.parse(dbsData[dbName]) : dbsData[dbName];
+              const db = await new Promise((resolve, reject) => {
+                const req = window.indexedDB.open(dbName);
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => reject(req.error);
+              });
+              
+              let activeDb = db;
+              let version = db.version;
+              let needsUpgrade = false;
+              for (const storeName in dbData) {
+                if (!db.objectStoreNames.contains(storeName)) {
+                  needsUpgrade = true;
+                  break;
+                }
+              }
+              
+              if (needsUpgrade) {
+                db.close();
+                activeDb = await new Promise((resolve, reject) => {
+                  const req = window.indexedDB.open(dbName, version + 1);
+                  req.onupgradeneeded = () => {
+                    const upgradeDb = req.result;
+                    for (const storeName in dbData) {
+                      if (!upgradeDb.objectStoreNames.contains(storeName)) {
+                        upgradeDb.createObjectStore(storeName);
+                      }
+                    }
+                  };
+                  req.onsuccess = () => resolve(req.result);
+                  req.onerror = () => reject(req.error);
+                });
+              }
+              
+              for (const storeName in dbData) {
+                const storeData = dbData[storeName];
+                const tx = activeDb.transaction(storeName, 'readwrite');
+                const store = tx.objectStore(storeName);
+                store.clear();
+                for (const key in storeData) {
+                  let parsedKey = key;
+                  if (!isNaN(key)) {
+                    parsedKey = Number(key);
+                  }
+                  store.put(storeData[key], parsedKey);
+                }
+                await new Promise((resolve) => {
+                  tx.oncomplete = resolve;
+                });
+              }
+              activeDb.close();
+            }
+          })()
+        ''');
+      } catch (_) {}
+    }
   }
 }

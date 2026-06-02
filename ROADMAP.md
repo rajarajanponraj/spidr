@@ -44,8 +44,8 @@ This document outlines the development phases for the SPIDR scraping, browser au
 - [x] Implement `page.adaptive()` facade
 
 ### Phase 8: Session Layer
-- [ ] Support complete state save and load: cookies, headers, local storage, indexDB state, session contexts
-- [ ] Expose `save()` and `restore()` abstractions
+- [x] Support complete state save and load: cookies, headers, local storage, indexDB state, session contexts
+- [x] Expose `save()` and `restore()` abstractions
 
 ### Phase 9: Crawler Framework
 - [ ] Define the crawler skeleton: `Spider`, `Request`, `Response`, `Crawler`, `Scheduler`

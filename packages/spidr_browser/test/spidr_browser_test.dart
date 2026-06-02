@@ -80,6 +80,122 @@ void main() {
       },
     );
 
+    test('should save and restore browser page session states (cookies, localStorage, IndexedDB)', () async {
+      final browser = await SpidrBrowser.launch(headless: true);
+
+      try {
+        final initialPages = await browser.pages();
+        final page = initialPages.first;
+        await page.goto(serverUrl);
+
+        // 1. Write cookies, localStorage, and IndexedDB in browser page context
+        await page.evaluate<void>('document.cookie = "auth_token=my_secret_token_123; path=/";');
+        await page.evaluate<void>('localStorage.setItem("user_theme", "dark");');
+        
+        await page.evaluate<void>('''
+          (async () => {
+            return new Promise((resolve, reject) => {
+              try {
+                const req = indexedDB.open('test_db', 1);
+                req.onerror = () => reject(new Error('Open error: ' + req.error));
+                req.onupgradeneeded = () => {
+                  try {
+                    req.result.createObjectStore('cache');
+                  } catch (e) {
+                    reject(new Error('Upgrade store creation error: ' + e));
+                  }
+                };
+                req.onsuccess = () => {
+                  try {
+                    const db = req.result;
+                    const tx = db.transaction('cache', 'readwrite');
+                    tx.onerror = () => reject(new Error('Tx error: ' + tx.error));
+                    const store = tx.objectStore('cache');
+                    const putReq = store.put('bar', 'foo');
+                    putReq.onerror = () => reject(new Error('Put error: ' + putReq.error));
+                    tx.oncomplete = () => {
+                      db.close();
+                      resolve();
+                    };
+                  } catch (e) {
+                    reject(new Error('Success handler error: ' + e));
+                  }
+                };
+              } catch (e) {
+                reject(new Error('Outer catch: ' + e));
+              }
+            });
+          })()
+        ''');
+
+        // 2. Capture session
+        final session = await page.saveSession('browser-session-xyz');
+        expect(session.sessionId, equals('browser-session-xyz'));
+        expect(session.cookies, isNotEmpty);
+        expect(session.localStorage['user_theme'], equals('dark'));
+        expect(session.indexedDb['test_db'], isNotNull);
+
+        // 3. Clear browser state completely
+        await page.evaluate<void>('document.cookie = "auth_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/";');
+        await page.evaluate<void>('localStorage.clear();');
+        await page.evaluate<void>('''
+          (async () => {
+            return new Promise((resolve) => {
+              const req = indexedDB.deleteDatabase('test_db');
+              req.onsuccess = () => resolve();
+              req.onerror = () => resolve();
+            });
+          })()
+        ''');
+
+        // Verify cleared state
+        final clearedCookie = await page.evaluate<String>('document.cookie');
+        final clearedTheme = await page.evaluate<String?>('localStorage.getItem("user_theme")');
+        expect(clearedCookie, isNot(contains('auth_token=my_secret_token_123')));
+        expect(clearedTheme, isNull);
+
+        // 4. Restore session
+        await page.restoreSession(session);
+
+        // 5. Assert states are fully recovered
+        final restoredCookie = await page.evaluate<String>('document.cookie');
+        expect(restoredCookie, contains('auth_token=my_secret_token_123'));
+
+        final restoredTheme = await page.evaluate<String?>('localStorage.getItem("user_theme")');
+        expect(restoredTheme, equals('dark'));
+
+        final restoredDbVal = await page.evaluate<String?>('''
+          (async () => {
+            return new Promise((resolve) => {
+              const req = indexedDB.open('test_db');
+              req.onsuccess = () => {
+                const db = req.result;
+                try {
+                  const tx = db.transaction('cache', 'readonly');
+                  const getReq = tx.objectStore('cache').get('foo');
+                  getReq.onsuccess = () => {
+                    db.close();
+                    resolve(getReq.result);
+                  };
+                  getReq.onerror = () => {
+                    db.close();
+                    resolve(null);
+                  };
+                } catch (_) {
+                  db.close();
+                  resolve(null);
+                }
+              };
+              req.onerror = () => resolve(null);
+            });
+          })()
+        ''');
+        expect(restoredDbVal, equals('bar'));
+      } finally {
+        await browser.close();
+      }
+    });
+
     test(
       'UnsupportedCapabilityException matches capabilities configuration',
       () {

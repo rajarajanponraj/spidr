@@ -67,4 +67,10 @@ abstract class SpidrBrowserPage implements SpidrPage {
 
   /// Captures a screenshot of the current page viewport and returns the raw image bytes.
   Future<List<int>> screenshot({String format = 'png', int? quality});
+
+  /// Captures the complete browser page session context (cookies, localStorage, IndexedDB).
+  Future<SpidrSession> saveSession(String sessionId);
+
+  /// Restores the complete browser page session context (cookies, localStorage, IndexedDB).
+  Future<void> restoreSession(SpidrSession session);
 }
