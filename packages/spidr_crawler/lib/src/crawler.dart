@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:spidr_core/spidr_core.dart';
 
 /// Subclass this to define spider-specific starting conditions and response parsing workflows.
@@ -267,9 +268,11 @@ class SpidrCrawler {
   /// User agent identifying string for robots.txt parsing.
   final String userAgent;
 
+  /// The maximum number of concurrent request executions.
+  final int concurrency;
+
   final Map<String, DateTime> _lastRequestTimes = {};
   late final RobotsManager _robotsManager;
-  SpidrRequest? _currentRequest;
 
   /// Creates a new [SpidrCrawler].
   SpidrCrawler({
@@ -280,6 +283,7 @@ class SpidrCrawler {
     this.delay = Duration.zero,
     this.respectRobots = true,
     this.userAgent = 'spidr',
+    this.concurrency = 1,
   }) {
     _robotsManager = RobotsManager(client, userAgent: userAgent);
   }
@@ -293,63 +297,93 @@ class SpidrCrawler {
       ));
     }
 
-    while (!scheduler.isEmpty) {
-      final request = scheduler.next();
-      if (request == null) break;
+    final activeFutures = <Future<void>>{};
+    final completer = Completer<void>();
 
-      final currentDepth = request.extra['depth'] as int? ?? 0;
-      if (currentDepth > maxDepth) continue;
-
-      if (respectRobots) {
-        final allowed = await _robotsManager.isAllowed(request.url);
-        if (!allowed) continue;
+    void nextTask() {
+      if (scheduler.isEmpty && activeFutures.isEmpty) {
+        if (!completer.isCompleted) completer.complete();
+        return;
       }
 
-      final hostKey = '${request.url.scheme}://${request.url.host}:${request.url.port}';
-      final now = DateTime.now();
-      final lastRequest = _lastRequestTimes[hostKey];
+      while (activeFutures.length < concurrency && !scheduler.isEmpty) {
+        final request = scheduler.next();
+        if (request == null) break;
 
-      var targetDelay = delay;
-      if (respectRobots) {
-        final robotsDelay = await _robotsManager.getCrawlDelay(request.url);
-        if (robotsDelay != null) {
-          final robotsDuration = Duration(milliseconds: (robotsDelay * 1000).toInt());
-          if (robotsDuration > targetDelay) {
-            targetDelay = robotsDuration;
-          }
+        final currentDepth = request.extra['depth'] as int? ?? 0;
+        if (currentDepth > maxDepth) continue;
+
+        final future = _processRequest(request);
+        activeFutures.add(future);
+        future.whenComplete(() {
+          activeFutures.remove(future);
+          nextTask();
+        });
+      }
+
+      if (scheduler.isEmpty && activeFutures.isEmpty) {
+        if (!completer.isCompleted) completer.complete();
+      }
+    }
+
+    nextTask();
+    await completer.future;
+  }
+
+  Future<void> _processRequest(SpidrRequest request) async {
+    if (respectRobots) {
+      final allowed = await _robotsManager.isAllowed(request.url);
+      if (!allowed) return;
+    }
+
+    final hostKey = '${request.url.scheme}://${request.url.host}:${request.url.port}';
+    final now = DateTime.now();
+
+    var targetDelay = delay;
+    if (respectRobots) {
+      final robotsDelay = await _robotsManager.getCrawlDelay(request.url);
+      if (robotsDelay != null) {
+        final robotsDuration = Duration(milliseconds: (robotsDelay * 1000).toInt());
+        if (robotsDuration > targetDelay) {
+          targetDelay = robotsDuration;
         }
       }
+    }
 
-      if (lastRequest != null && targetDelay > Duration.zero) {
-        final diff = now.difference(lastRequest);
-        if (diff < targetDelay) {
-          await Future<void>.delayed(targetDelay - diff);
-        }
+    final lastRequest = _lastRequestTimes[hostKey];
+    var waitTime = Duration.zero;
+    if (lastRequest != null && targetDelay > Duration.zero) {
+      final plannedTime = lastRequest.add(targetDelay);
+      if (plannedTime.isAfter(now)) {
+        waitTime = plannedTime.difference(now);
       }
+    }
 
-      _lastRequestTimes[hostKey] = DateTime.now();
+    _lastRequestTimes[hostKey] = now.add(waitTime).add(targetDelay);
 
-      if (scheduler.isVisited(request.url)) continue;
-      scheduler.markVisited(request.url);
+    if (waitTime > Duration.zero) {
+      await Future<void>.delayed(waitTime);
+    }
 
-      _currentRequest = request;
+    if (scheduler.isVisited(request.url)) return;
+    scheduler.markVisited(request.url);
 
+    await runZoned(() async {
       try {
         final response = await client.send(request);
         await spider.parse(response, this);
       } catch (_) {
         // Suppress or delegate to dynamic middleware logger in later phases
-      } finally {
-        _currentRequest = null;
       }
-    }
+    }, zoneValues: {#currentRequest: request});
   }
 
   /// Manually queue additional requests discovered during scraping.
   void submit(SpidrRequest request) {
     var updatedRequest = request;
     if (!request.extra.containsKey('depth')) {
-      final currentDepth = _currentRequest?.extra['depth'] as int? ?? 0;
+      final currentRequest = Zone.current[#currentRequest] as SpidrRequest?;
+      final currentDepth = currentRequest?.extra['depth'] as int? ?? 0;
       updatedRequest = request.copyWith(
         extra: {
           ...request.extra,

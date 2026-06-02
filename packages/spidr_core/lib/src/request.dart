@@ -61,4 +61,28 @@ class SpidrRequest {
       extra: extra ?? this.extra,
     );
   }
+
+  /// Serializes the request to a JSON-compatible Map.
+  Map<String, dynamic> toJson() => {
+        'url': url.toString(),
+        'method': method,
+        'headers': headers,
+        'body': body,
+        'timeout': timeout.inMilliseconds,
+        'maxRedirects': maxRedirects,
+        'followRedirects': followRedirects,
+        'extra': extra,
+      };
+
+  /// Deserializes a request from a JSON-compatible Map.
+  factory SpidrRequest.fromJson(Map<String, dynamic> json) => SpidrRequest(
+        url: Uri.parse(json['url'] as String),
+        method: json['method'] as String? ?? 'GET',
+        headers: Map<String, String>.from(json['headers'] as Map? ?? const {}),
+        body: (json['body'] as List?)?.cast<int>(),
+        timeout: Duration(milliseconds: json['timeout'] as int? ?? 30000),
+        maxRedirects: json['maxRedirects'] as int? ?? 5,
+        followRedirects: json['followRedirects'] as bool? ?? true,
+        extra: Map<String, dynamic>.from(json['extra'] as Map? ?? const {}),
+      );
 }
