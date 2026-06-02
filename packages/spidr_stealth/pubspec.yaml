@@ -2,9 +2,9 @@ name: spidr_stealth
 description: Evasion and stealth features like User-Agent rotation, canvas masking, and dynamic fingerprints.
 version: 0.0.1
 resolution: workspace
-homepage: https://github.com/spidr-scraping/spidr
-repository: https://github.com/spidr-scraping/spidr/tree/main/packages/spidr_stealth
-issue_tracker: https://github.com/spidr-scraping/spidr/issues
+homepage: https://github.com/rajarajanponraj/spidr
+repository: https://github.com/rajarajanponraj/spidr/tree/main/packages/spidr_stealth
+issue_tracker: https://github.com/rajarajanponraj/spidr/issues
 
 environment:
   sdk: ^3.12.0

@@ -2,9 +2,9 @@ name: spidr_storage
 description: Modular storage abstractions supporting SQLite, Isar, and IndexedDB for SPIDR.
 version: 0.0.1
 resolution: workspace
-homepage: https://github.com/spidr-scraping/spidr
-repository: https://github.com/spidr-scraping/spidr/tree/main/packages/spidr_storage
-issue_tracker: https://github.com/spidr-scraping/spidr/issues
+homepage: https://github.com/rajarajanponraj/spidr
+repository: https://github.com/rajarajanponraj/spidr/tree/main/packages/spidr_storage
+issue_tracker: https://github.com/rajarajanponraj/spidr/issues
 
 environment:
   sdk: ^3.12.0
